@@ -8,7 +8,7 @@ from sklearn import linear_model
 from sklearn import svm
 from sklearn import metrics
 import itertools
-import code.utils as utils
+from . import utils
 import sys
 
 def full_search(train_x, train_y, valid_x, valid_y, n_ex, n_ex_valid,

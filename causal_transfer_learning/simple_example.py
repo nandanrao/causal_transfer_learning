@@ -4,7 +4,7 @@
 
 import numpy as np
 import sys
-from code import subset_search
+from .code import subset_search
 from sklearn import linear_model
 
 def generate_data(n_examples_task=300, n_tasks=3, n_test_tasks=100, n_predictors=3):
