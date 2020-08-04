@@ -14,17 +14,15 @@ import time
 
 from sklearn import linear_model
 from sklearn import svm
-from sklearn import cross_validation
-from sklearn.cross_validation import KFold
 from matplotlib import pyplot as pl
 from matplotlib import rc
 import matplotlib as mpl
 
 from sklearn.neighbors import KernelDensity
-from sklearn.cross_validation import KFold
+from sklearn.model_selection import KFold
 import os
 
-import cPickle as pickle
+import _pickle as cPickle
 import picos as pic
 from cvxopt import matrix, solvers
 
@@ -40,7 +38,7 @@ def split_train_valid(x, y, n_ex, valid_split=0.1):
 
         valid_x.append(x[n_ex_cum[i] + n_train_task:n_ex_cum[i + 1]])
         valid_y.append(y[n_ex_cum[i] + n_train_task:n_ex_cum[i + 1]])
-        
+
         n_ex_train.append(n_train_task)
         n_ex_valid.append(n_ex[i] - n_train_task)
 
@@ -60,7 +58,7 @@ def np_getDistances(x,y):
     K = (x[:,:, np.newaxis] - y.T)
     return np.linalg.norm(K,axis = 1)
 
-    
+
 #Select top 11 predictors from Lasso
 def lasso_alpha_search_synt(X,Y):
 
@@ -132,7 +130,7 @@ def find_init_sol(Cov_ctr,s_size, n_size):
     X = np.array(X.value)
 
     return X
- 
+
 def find_init_sol_b(Cov_ctr, fix):
 
     shape = Cov_ctr.shape[0]
@@ -162,23 +160,23 @@ def compute_beta_naive(X,X_l,Y_l,S,alpha,eps,numCauses, X_tr = 0, Y_tr = 0):
     ns_l = X.shape[0]
     ns_s = Y_l.size
 
-    
+
     numEffects = X.shape[1]-numCauses
     numPredictors = X.shape[1]
-    
+
     cov_x = 1./ns_l*np.dot(X.T,X)
     cov_xs = cov_x[0:numCauses,0:numCauses]
-    
+
     cov_ys = np.dot(cov_xs,alpha)
 
     cov_yn = 1./ns_s*np.dot(X_l[:,numCauses:].T,Y_l)
     cov_xy = np.append(cov_ys, cov_yn)[:,np.newaxis]
-    
+
     cy = np.dot(alpha[np.newaxis,:],
                 np.dot(cov_xs,alpha[:,np.newaxis])) + eps**2
-        
+
     cov_y = np.concatenate([cov_xy,cy]).T
-        
+
     temp = np.append(cov_x,cov_xy.T,axis=0)
     cov = np.append(temp,cov_y.T,axis=1)
 
@@ -199,7 +197,7 @@ def compute_beta_mtl(X,X_l,Y_l,S,alpha,eps,numCauses,X_tr = 0,
 
     ns_l = X.shape[0]
     ns_s = Y_l.size
-    
+
     numEffects = X.shape[1]-numCauses
     numPredictors = X.shape[1]
 
@@ -207,7 +205,7 @@ def compute_beta_mtl(X,X_l,Y_l,S,alpha,eps,numCauses,X_tr = 0,
         cov_x = np.cov(X.T)
     else:
         cov_x = true_cov[0:-1,0:-1]
-        
+
 
     if numCauses == numPredictors:
         cov_xs = cov_x[0:numCauses,0:numCauses]
@@ -222,16 +220,16 @@ def compute_beta_mtl(X,X_l,Y_l,S,alpha,eps,numCauses,X_tr = 0,
 
         cov_x = cov[0:-1,0:-1]
         cov_xy = cov[-1,0:-1][:,np.newaxis]
-        
+
         beta_est =  np.dot(np.linalg.inv(cov_x),cov_xy)
         return beta_est
 
-    
+
     elif numCauses ==0:
         cov_xy = 1./ns_s*np.dot(X_l[:,numCauses:].T,Y_l)
         cov_yn = cov_xy
         cy = np.array([eps**2])[:,np.newaxis]
-        
+
     else:
         cov_xs = cov_x[0:numCauses,0:numCauses]
         cov_ys = np.dot(cov_xs,alpha)
@@ -241,38 +239,38 @@ def compute_beta_mtl(X,X_l,Y_l,S,alpha,eps,numCauses,X_tr = 0,
         cy = np.dot(alpha[np.newaxis,:],
                     np.dot(cov_xs,alpha[:,np.newaxis])) + eps**2
 
-    
+
     cov_y = np.concatenate([cov_xy,cy]).T
     temp = np.append(cov_x,cov_xy.T,axis=0)
     x = cov_yn
 
     M = np.append(temp,cov_y.T,axis=1)
-    
+
     def logl_chol(u):
-        
+
         Mat = M
 
         Mat[-1,numCauses:-1] = u
         Mat[numCauses:-1,-1] = u.T
-        
+
         try:
             M_inv = np_aut.linalg.inv(Mat)
             det = np_aut.linalg.det(M_inv)
             if np_aut.isnan(det) or det<0:
                 log_det = -1e5
             else: log_det = np_aut.log(det)
-            
+
             ret = np_aut.trace(np_aut.dot(M_inv,S)) - log_det
-            
+
         except Exception:
             ret = 1e5
-    
+
         return ret
-    
-        
+
+
     cov= find_init_sol(M,numCauses,numEffects)
     M[-1,numCauses:-1] = cov[-1,numCauses:-1]
-    
+
     x_init = M[-1,numCauses:-1]
     tol= 1e-10
     res = sc.optimize.fmin(logl_chol,x_init,
@@ -284,9 +282,9 @@ def compute_beta_mtl(X,X_l,Y_l,S,alpha,eps,numCauses,X_tr = 0,
 
     M[-1,numCauses:-1] = res
     M[numCauses:-1,-1] = res.T
-    
+
     cov[-1,numCauses:-1] = M[-1,numCauses:-1]
-    cov[numCauses:-1,-1] = M[numCauses:-1,-1]    
+    cov[numCauses:-1,-1] = M[numCauses:-1,-1]
     cov_x = cov[0:-1,0:-1]
     cov_xy = cov[-1,0:-1][:,np.newaxis]
 
@@ -316,7 +314,7 @@ def error_naive_beta(train_x, train_y,
     else:
         alpha = alpha
         eps = eps
-    
+
     mask = np.ones(p, dtype = bool)
 
     mask[subset] = False
@@ -328,7 +326,7 @@ def error_naive_beta(train_x, train_y,
 
     cov = np.concatenate([X_lab_perm, Y_lab], axis=1)
     cov = 1./n*np.dot(cov.T,cov)
-                             
+
     beta = compute_beta_naive(np.append(X_lab_perm, X_ul_perm,axis=0),
                             X_lab_perm,
                             Y_lab,
@@ -341,13 +339,13 @@ def error_naive_beta(train_x, train_y,
 
     bs = beta[0:s_size].flatten()
     bn  = beta[s_size:].flatten()
-    
+
     if min_el != 0:
         n = min_el
 
     pred_test = np.sum(bs*test_x[:,subset],axis=1) + np.sum(bn*test_x[:,mask],1)
     pred_test = pred_test[:,np.newaxis]
-    
+
     mse_test =np.mean((pred_test-test_y)**2)
     if subset.size > 0 and subset.size<p:
         b = np.zeros(p)
@@ -369,7 +367,7 @@ def error_mle_beta(train_x, train_y,
     if eps==0:
         train_x_all = np.append(train_x, X_lab, axis=0)
         train_y_all = np.append(train_y, Y_lab, axis=0)
-        
+
         if subset.size > 0:
             regr = linear_model.LinearRegression()
             regr.fit(train_x_all[:,subset],train_y_all)
@@ -399,7 +397,7 @@ def error_mle_beta(train_x, train_y,
 
     cov = np.concatenate([X_lab_perm, Y_lab], axis=1)
     cov = np.cov(cov.T)
-    
+
     beta = compute_beta_mtl(np.append(X_lab_perm, X_ul_perm,axis=0),
                             X_lab_perm,
                             Y_lab,
@@ -414,7 +412,7 @@ def error_mle_beta(train_x, train_y,
 
     bs = beta[0:s_size].flatten()
     bn  = beta[s_size:].flatten()
-    
+
     #if min_el != 0:
         #n = min_el
 
@@ -422,7 +420,7 @@ def error_mle_beta(train_x, train_y,
         pred_test = np.sum(bs*test_x[:,subset],axis=1)+ np.sum(bn*test_x[:,mask],1)
     else: pred_test = np.sum(bn*test_x[:,mask],1)
     pred_test = pred_test[:,np.newaxis]
-    
+
     mse_test =np.mean((pred_test-test_y)**2)
 
     if subset.size > 0 and subset.size<p:
@@ -434,11 +432,11 @@ def error_mle_beta(train_x, train_y,
 
     return mse_test, b[:,np.newaxis]
 
-    
+
 def error_mle_beta_cv(train_x, train_y,
                    X_lab_all, Y_lab_all,
                    X_ul,
-                   subset_list,cov,n,p, 
+                   subset_list,cov,n,p,
                    alpha=np.zeros(1), eps=0,min_el = 0,
                    opti_alpha = False,
                    true_cov = None):
@@ -459,7 +457,7 @@ def error_mle_beta_cv(train_x, train_y,
         if eps==0:
             train_x_all = np.append(train_x, X_lab, axis=0)
             train_y_all = np.append(train_y, Y_lab, axis=0)
-            
+
             if subset.size > 0:
                 regr = linear_model.LinearRegression()
                 regr.fit(train_x_all[:,subset],train_y_all)
@@ -479,7 +477,7 @@ def error_mle_beta_cv(train_x, train_y,
         if subset.size>0:
             mask[subset] = False
 
-    
+
         s_size = subset.size
         if s_size > 0:
             X_lab_perm = np.concatenate([X_lab[:,subset],X_lab[:,mask]],axis=1)
@@ -490,7 +488,7 @@ def error_mle_beta_cv(train_x, train_y,
 
         cov = np.concatenate([X_lab_perm, Y_lab], axis=1)
         cov = np.cov(cov.T)
-        
+
         beta = compute_beta_mtl(np.append(X_lab_perm, X_ul_perm,axis=0),
                                 X_lab_perm,
                                 Y_lab,
@@ -505,14 +503,14 @@ def error_mle_beta_cv(train_x, train_y,
 
         bs = beta[0:s_size].flatten()
         bn  = beta[s_size:].flatten()
-        
+
         test_x, test_y = X_lab_all[test], Y_lab_all[test]
 
         if subset.size>0:
             pred_test = np.sum(bs*test_x[:,subset],axis=1)+ np.sum(bn*test_x[:,mask],1)
         else: pred_test = np.sum(bn*test_x[:,mask],1)
         pred_test = pred_test[:,np.newaxis]
-        
+
         mse_test =np.mean((pred_test-test_y)**2)
 
         if subset.size > 0 and subset.size<p:
@@ -567,7 +565,7 @@ def numpy_HsicGammaTest(X,Y, sigmaX, sigmaY, DomKer = 0):
 	coef = 1./n
 	HSIC = coef**2*np.sum(KernelX*KernelY) + coef**4*np.sum(
                 KernelX)*np.sum(KernelY) - 2*coef**3*np.sum(np.sum(KernelX,axis=1)*np.sum(KernelY, axis=1))
-	
+
 	#Get sums of Kernels
 	KXsum = np.sum(KernelX)
 	KYsum = np.sum(KernelY)
@@ -597,8 +595,8 @@ def sigmoid(x):
 #-------------------------------------------------------
 
 def levene_pval(Residual,nEx, numR):
-	
-	prev = 0 
+
+	prev = 0
 	n_ex_cum = np.cumsum(nEx)
 
 	for j in range(numR):
@@ -714,21 +712,3 @@ def merge_results(f1, f2, key, direc):
 
   with open(os.path.join(direc, 'merged.pkl'),'wb') as f:
     pickle.dump(r1, f)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
